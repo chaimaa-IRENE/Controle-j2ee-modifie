@@ -1,4 +1,4 @@
-name: CI/CD Modern-RealEstate
+name: CI/CD Modern-RealEstateee
 
 on:
   push:
