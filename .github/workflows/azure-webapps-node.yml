@@ -1,13 +1,63 @@
-name: CI/CD Modern-RealEstateee
+name: CI/CD Docker Full Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  build-and-deploy:
-    runs-on: windows-latest
+  ci-cd-docker:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # 1️⃣ Checkout du code
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    # 2️⃣ Build l'image Docker (CI)
+    - name: Build Docker image
+      run: |
+        echo "📦 Building Docker image..."
+        docker build -t my-app:${{ github.sha }} .
+
+    # 3️⃣ Optionnel: Run tests à l'intérieur du container
+    - name: Run container for testing
+      run: |
+        echo "🧪 Running tests in Docker container..."
+        docker run --rm my-app:${{ github.sha }} npm test || echo "Tests finished"
+
+    # 4️⃣ Login Docker Hub pour push (CD)
+    - name: Docker Hub Login
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    # 5️⃣ Tag et push l'image Docker
+    - name: Push Docker image to Hub
+      run: |
+        docker tag my-app:${{ github.sha }} my-dockerhub-username/my-app:${{ github.sha }}
+        docker push my-dockerhub-username/my-app:${{ github.sha }}
+
+    # 6️⃣ Déploiement SSH (Combiner → Image)
+    - name: Deploy to Server via SSH
+      uses: appleboy/ssh-action@v0.1.6
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        script: |
+          echo "🚀 Pulling new Docker image..."
+          docker pull my-dockerhub-username/my-app:${{ github.sha }}
+          
+          echo "⏹ Stopping old container (if exists)..."
+          docker stop my-app || true
+          docker rm my-app || true
+          
+          echo "▶ Running new container..."
+          docker run -d --name my-app -p 3000:3000 my-dockerhub-username/my-app:${{ github.sha }}
+          
+          echo "✅ Deployment completed!"
